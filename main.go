@@ -117,21 +117,17 @@ func parseLine(raw []byte) (freq, error) {
 }
 
 // takes an arbitrary string and returns a reading difficulty score
-func (m FreqMap) Score(b []byte) (uint32, error) {
-	var score uint64
-	var total uint32
-
+func (m FreqMap) Score(b []byte) (float64, error) {
 	b = bytes.ToLower(b)
 	s := yoloString(b)
 
 	var rbuf []rune
+	var scores []uint32
 	for _, r := range s {
 		if !unicode.IsLetter(r) {
 			val, ok := m[string(rbuf)]
 			if ok {
-				println(string(rbuf), val)
-				score += uint64(val)
-				total++
+				scores = append(scores, val)
 			}
 
 			rbuf = rbuf[:0]
@@ -141,11 +137,34 @@ func (m FreqMap) Score(b []byte) (uint32, error) {
 		rbuf = append(rbuf, r)
 	}
 
-	if total == 0 {
-		return 0, fmt.Errorf("no words found")
+	return calculateKurtosis(scores), nil
+}
+
+func calculateKurtosis(wordScores []uint32) float64 {
+	n := len(wordScores)
+	if n <= 1 {
+		return 0
 	}
 
-	return uint32(score / uint64(total)), nil
+	var sum, sumOfSquares float64
+	for _, score := range wordScores {
+		val := float64(score)
+		sum += val
+		sumOfSquares += val * val
+	}
+
+	mean := sum / float64(n)
+	variance := (sumOfSquares / float64(n)) - (mean * mean)
+	stdDev := math.Sqrt(variance)
+
+	var sumOfFourthPowers float64
+	for _, score := range wordScores {
+		deviation := float64(score) - mean
+		fourthPower := math.Pow(deviation/stdDev, 4)
+		sumOfFourthPowers += fourthPower
+	}
+
+	return (1.0 / float64(n)) * sumOfFourthPowers
 }
 
 func main() {
